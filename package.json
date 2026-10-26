@@ -4,6 +4,7 @@
   "description": "微盟商户后台自动化经验与 API 文档（只读巡查 + 批量维护）",
   "private": true,
   "scripts": {
+    "api:sniff": "node scripts/00-sniff-api.js",
     "login": "node scripts/lib/common.js login",
     "menu": "node scripts/01-sniff-menu.js",
     "map": "node scripts/02-build-feature-map.js",

@@ -29,6 +29,7 @@
 | [**05 · 装修页面 cms**](docs/05-装修页面-cms.md) | 页面列表、编辑器 DSL 抓取、从 DSL 提取图片引用 |
 | [**06 · 库存 inventory**](docs/06-库存-inventory.md) | 库存查询、库存调整、**异步任务陷阱** |
 | [**07 · 其他模块与页面路径**](docs/07-其他模块与页面路径.md) | 财务/运费模板/开屏推广/客服/数据 等模块的入口与已探明接口 |
+| [**10 · 商品分组 classify**](docs/10-商品分组-classify.md) | 分组树 CRUD、**删一级级联删二级**、按表格批量建 106 个二级并挂图 |
 
 ### 必读
 
@@ -78,10 +79,13 @@ Content-Type: application/json
 
 | 项目 | 数量 |
 |---|---|
+| **已探明接口** | **38 个**（9 个域）→ [API_CATALOG](docs/API_CATALOG.md) |
+| **权限码（codeList）** | **725 条**，28 个产品线 |
 | 菜单模块（顶部导航） | 14 个（含「应用」） |
 | 一级菜单组 / 功能入口 | 13 组 / **428** 个 |
 | 在售商品 | 180 条 |
 | 素材库 | 5553 条 |
+| 商品分组 | 9 个一级 / 106 个二级 |
 | 装修页面 | 5 个，引用图片 81 张 |
 
 ---
@@ -170,6 +174,15 @@ Content-Type: application/json
 > **凡是返回 `result:true` 的，都要回读确认**
 > **`pageSize` 加大后返回空，先怀疑上限，别怀疑数据没了**
 
+### 12. 商品分组：删除级联，创建要带父级
+
+- **删一级会连带删掉它的全部二级**（弹窗原文："该分组下有 N 个二级分组，删除后同步删除"）。
+  清空整个分组体系只需删一级，不用逐个删二级（实测 59 个分组只调了 9 次接口）。
+- **创建时只传 `name` 会建成一级分组**（`parentId` 默认 0）。建二级必须显式传
+  `parentId` + `classifyLevel: 2`，否则凭空多出一个顶层分组。
+- 系统分组（新品上架 -1 / 热销排行 -2 / 未分组 -3 / 列表中隐藏 -4）删不掉，也不该删。
+- 详见 [10 · 商品分组](docs/10-商品分组-classify.md)。
+
 ---
 
 ## 🔐 安全说明
@@ -203,10 +216,12 @@ weimob-auto-tips/
 │   ├── 07-其他模块与页面路径.md
 │   ├── 08-批量清库实战.md          🔴 必读
 │   ├── 09-踩坑与事故复盘.md
+│   ├── 10-商品分组-classify.md
 │   └── API_CATALOG.md
 └── scripts/
     ├── lib/common.js               公共：登录 / 抓 header / 分页 / CSV
-    ├── 01-sniff-menu.js            抓全量菜单树
+    ├── 00-sniff-api.js             接口台账自动采集（点一遍后台就出清单）
+    ├── 01-sniff-menu.js            抓全量菜单树 + 725 条权限码
     ├── 02-build-feature-map.js     归类 + 生成可检索地图（HTML/MD）
     ├── 03-export-goods.js          商品全量备份
     ├── 04-delete-goods.js          分批删商品（--yes 才执行）
@@ -221,6 +236,7 @@ weimob-auto-tips/
 npm install                    # 或复用全局 playwright-core
 cp config.example.js config.local.js && vim config.local.js
 node scripts/lib/common.js login       # 登录一次，存登录态
+node scripts/00-sniff-api.js --auto    # 采集接口台账（人工点更深，--auto 走一遍模块）
 node scripts/01-sniff-menu.js          # 抓菜单
 node scripts/02-build-feature-map.js   # 出功能地图
 node scripts/03-export-goods.js        # 备份商品
