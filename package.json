@@ -1,0 +1,19 @@
+{
+  "name": "weimob-auto-tips",
+  "version": "1.0.0",
+  "description": "微盟商户后台自动化经验与 API 文档（只读巡查 + 批量维护）",
+  "private": true,
+  "scripts": {
+    "login": "node scripts/lib/common.js login",
+    "menu": "node scripts/01-sniff-menu.js",
+    "map": "node scripts/02-build-feature-map.js",
+    "goods:export": "node scripts/03-export-goods.js",
+    "goods:delete": "node scripts/04-delete-goods.js",
+    "page:urls": "node scripts/05-collect-page-urls.js",
+    "material:export": "node scripts/06-export-material.js",
+    "material:delete": "node scripts/07-delete-unused-material.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.40.0"
+  }
+}

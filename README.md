@@ -1,0 +1,236 @@
+# 微盟商户后台 · 自动化经验与 API 文档（详尽中文版）
+
+> 站点：`https://master.weimob.com/bos/products/...`（商户：`护稚佳品`，bosId `<BOS_ID>`）
+> 本文所有接口均为 **POST + JSON + Header 鉴权**，实测于 2026-10-25 / 10-26
+> 本次实操：菜单全量地图采集（13 个模块 / 428 个功能入口）→ 商品全清（180 条）→ 素材库消化（5552 → 57 条）
+
+**和保未宝那套的区别**：保未宝是自建 PHP 后台（`/admin/<模块>/<动作>`，一个小写路径一个接口）；
+微盟是 SaaS 微前端，**一个接口域 `api3` + 多个产品线（productCode）**，鉴权靠 Cookie + `authorization` 头，
+而且大量操作是**异步任务**。这套文档按微盟的实际形态写。
+
+---
+
+## 📚 文档导航
+
+### 基础
+
+| 文档 | 内容 |
+|---|---|
+| [**00 · 概览与快速开始**](docs/00-概览与快速开始.md) | 站点结构、productCode 机制、5 分钟上手、通用约定 |
+| [**01 · 鉴权与错误码**](docs/01-鉴权与错误码.md) | 登录流程、请求头清单、`fail auth 1041` 等错误码处置 |
+
+### 核心接口（实战验证）
+
+| 文档 | 内容 |
+|---|---|
+| [**02 · 菜单地图与功能定位**](docs/02-菜单地图与功能定位.md) | `queryCacheableMenus` 一次拿全量菜单树；13 模块 428 入口归属判定 |
+| [**03 · 商品管理 goods**](docs/03-商品管理-goods.md) | 列表（**pageSize ≤ 20 铁律**）、批量删除、导出兜底 |
+| [**04 · 素材库 material**](docs/04-素材库-material.md) | 列表分页、删除（**updateUid 必须是素材 createUid**）、引用关系反查 |
+| [**05 · 装修页面 cms**](docs/05-装修页面-cms.md) | 页面列表、编辑器 DSL 抓取、从 DSL 提取图片引用 |
+| [**06 · 库存 inventory**](docs/06-库存-inventory.md) | 库存查询、库存调整、**异步任务陷阱** |
+| [**07 · 其他模块与页面路径**](docs/07-其他模块与页面路径.md) | 财务/运费模板/开屏推广/客服/数据 等模块的入口与已探明接口 |
+
+### 必读
+
+| 文档 | 内容 |
+|---|---|
+| [**08 · 批量清库实战**](docs/08-批量清库实战.md) | 🔴 **血的教训**：180 商品 + 5501 素材的完整清库流程与顺序 |
+| [**09 · 踩坑与事故复盘**](docs/09-踩坑与事故复盘.md) | 12 个真实踩坑：pageSize 静默降级、SPA 漏项、异步任务假成功… |
+| [**API_CATALOG**](docs/API_CATALOG.md) | 已探明接口清单（含探测状态标记） |
+
+---
+
+## ⚡ API 速查
+
+### 通用
+
+```
+POST https://master.weimob.com/api3/<域>/<资源>/<动作>
+Content-Type: application/json
+
+必备请求头：
+  authorization  登录票据（从任一 XHR 里抄，不是 Cookie 就够）
+  apiclient      客户端标识
+  weimob-bosid   商户 ID
+  referer        必须带，否则部分接口 403
+  可选 apipath   仅 iPaaS 网关（/weimob/saas/admin）需要，用来区分功能
+```
+
+### 最常用 5 个
+
+| 接口 | 用途 | 关键参数 |
+|---|---|---|
+| `/merchant/backstage/service/share/queryCacheableMenus` | 全量菜单树 | `productId` |
+| `/mall/goods/queryGoodsListWithPageForManagement` | 商品列表 | `pageNum` / **`pageSize ≤ 20`** |
+| `/mall/goods/deleteGoods` | 批量删商品 | `goodsIdList[]` |
+| `/material/center/material/getMaterialList` | 素材列表 | `pageSize` 可到 60 |
+| `/material/center/material/deleteMaterial` | 删素材 | `materialIdList[]` + **`updateUid`** |
+
+### 三个致命陷阱
+
+| 陷阱 | 现象 | 解决 |
+|---|---|---|
+| 商品列表 `pageSize` 传大了 | 返回 `totalCount=0`、`pageList=[]`，**不报错** | 固定 20 分页拉，别想着一次拉完 |
+| `errcode` 类型不统一 | 商品接口是字符串 `"0"`，素材接口是数字 `0` | 判断写 `err === 0 \|\| err === '0'` |
+| 库存调整「成功」但不生效 | 接口返回 `result:true` + `taskId`，数值不变 | 它是**异步任务**，且商品已删时任务无处落地 |
+
+### 实测规模（2026-10-26）
+
+| 项目 | 数量 |
+|---|---|
+| 菜单模块（顶部导航） | 14 个（含「应用」） |
+| 一级菜单组 / 功能入口 | 13 组 / **428** 个 |
+| 在售商品 | 180 条 |
+| 素材库 | 5553 条 |
+| 装修页面 | 5 个，引用图片 81 张 |
+
+---
+
+## 批量操作经验
+
+### 0. 心法：先快照，再动手
+
+**任何生产数据变更，串行五步**：
+
+1. **只读快照**：把要动的对象全量导出（JSON + CSV），落盘带时间戳
+2. **算出影响面**：删除前先算「谁引用了它」（素材 → 装修页面 / 商品图）
+3. **小批验证**：先删 1 条，回读确认状态真的变了
+4. **批量执行**：每批 ≤ 20，每批后回读计数，数量不降就停
+5. **独立复核**：用另一个页面（不是同一个接口）再确认一次结果
+
+> 本次 180 商品 + 5501 素材全程零误删，靠的就是这套顺序。跳过第 2 步就会删掉首页在用的图。
+
+### 1. 鉴权
+
+微盟后台是**多产品线微前端**：顶部导航每切换一个模块，就是换一个 `productCode`（`ecOrder` / `onecrm` / `ecGoods` / `mpmaterial` …）。
+登录态是 Cookie，但**光有 Cookie 不够**——`api3` 上的业务接口要 `authorization` 头（登录后由前端注入，XHR 里能看到）。
+
+最稳的拿法：打开任意业务页，监听第一个 XHR，把 `authorization` / `apiclient` / `weimob-bosid` 三个头抄下来复用。
+
+### 2. 菜单是接口给的，不是数出来的
+
+别用点击遍历侧边栏——SPA 只渲染当前层，**点一遍必漏项**（本次实测漏了「员工」模块 2/3 的菜单）。
+直接调 `queryCacheableMenus`，一次拿回整棵树，字段含 `name / url / authCode / level / children`。
+
+### 3. 归属判定用 URL 里的 productCode
+
+菜单树是按产品线分树返回的，同一个商户有 13 棵树。判断某个菜单属于哪个模块，
+**看它 URL 里的 productCode**（`/bos/products/<productCode>/...`），比看名字可靠：
+
+`home`→店铺、`ecOrder`/`ecGoods`→商城、`onecrm`→CRM、`wosheading`→供应链、`sente`→数据…
+
+### 4. 删除前先算引用（素材专治）
+
+素材库删除接口**不做引用保护**——你删了，首页立刻白图。
+必须自己反查：抓 5 个装修页面的编辑器 DSL，提取所有 `image-c.weimobwmc.com` URL，
+按**文件名（bucket 之后的 uuid.ext）**和素材库比对，没命中的才是"未使用"。
+
+### 5. 异步任务不要当同步
+
+`createAsyncStockTask` 之流返回 `result:true` 不代表生效。要么轮询任务状态，要么等一段时间再回读。
+**本次踩的坑**：商品已删 → SKU 不存在 → 库存任务提交成功但永远不落地，12 条库存成了孤儿。
+
+### 6. 分页上限要实测
+
+- 商品列表：`pageSize=200` → 返回空（不是报错！）→ 差点误判"库存已清空"
+- 素材列表：`pageSize=60` 可用
+- 装修页面列表：`pageSize=10` 默认
+
+**结论：分页参数一律先用默认值跑通，再小步放大，同时校验 `totalCount`。**
+
+### 7. 删除接口的必填字段藏在报错里
+
+`deleteMaterial` 第一次调用报：
+`updateUid不能为空, 组织架构Id不能为空, 素材类型不能为空`
+
+补齐 `updateUid`（**必须是该素材的 `createUid`**，不是当前登录人）、`materialType`、`vid` 后就通了。
+微盟的报错信息很直白，**逐个字段试比看文档快**。
+
+### 8. 浏览器自动化的现实
+
+- `playwright-cli` 在跨域跳转（`master.weimob.com` → `account.weimob.com`）后会掉会话，用自建 Playwright 脚本更稳
+- 本机 playwright 版本要的 chromium 与缓存不一致，**显式指定 `executablePath`** 指到已缓存的 chromium
+- 业务页内容是**套 iframe** 的，`document.body.innerText` 在主文档拿不到，要遍历 `page.frames()`
+- 弹窗元素常被一层透明 `input` 遮住，`click()` 会超时，用 `click({force:true})` 或点底层输入框
+
+### 9. 数量核对要用两条独立路径
+
+删完商品后，一个接口说 0，另一个页面说 37——**都不算数**。
+必须：接口 `totalCount` + 页面文本「共 N 条」两边都对上，才算真清空。
+
+### 10. 什么删不掉
+
+- **有订单的商品**：微盟不阻止删除，但订单里的商品快照从此不可追溯
+- **孤儿 SKU 库存**：商品删了但库存行留着，页面改不动（任务无目标），只能找客服清档
+- **仓库定义**：属于基础资料，删库存不等于删仓库
+
+### 11. 一句话总结
+
+> **菜单查接口 → 引用先算清 → 快照再动手 → 20 条一批 → 双路径复核**
+> **凡是返回 `result:true` 的，都要回读确认**
+> **`pageSize` 加大后返回空，先怀疑上限，别怀疑数据没了**
+
+---
+
+## 🔐 安全说明
+
+本仓库所有文档/脚本均已**脱敏**：
+
+- 真实 bosId → `<BOS_ID>`
+- 真实 vid → `<VID>`
+- 门店 key / productCode 路径参数 → `<KEY>`
+- 真实账号 → `<ACCOUNT>`
+- `authorization` → `<TOKEN>`
+
+请在使用前替换为自己的凭证，并**不要提交真实凭据到 Git**（本项目 `.gitignore` 已排除 `config.json` / `*.local.js`）。
+
+---
+
+## 📁 仓库结构
+
+```
+weimob-auto-tips/
+├── README.md                        本文件（导航 + 经验总结）
+├── config.example.js                配置模板（复制成 config.local.js）
+├── docs/
+│   ├── 00-概览与快速开始.md
+│   ├── 01-鉴权与错误码.md
+│   ├── 02-菜单地图与功能定位.md
+│   ├── 03-商品管理-goods.md
+│   ├── 04-素材库-material.md
+│   ├── 05-装修页面-cms.md
+│   ├── 06-库存-inventory.md
+│   ├── 07-其他模块与页面路径.md
+│   ├── 08-批量清库实战.md          🔴 必读
+│   ├── 09-踩坑与事故复盘.md
+│   └── API_CATALOG.md
+└── scripts/
+    ├── lib/common.js               公共：登录 / 抓 header / 分页 / CSV
+    ├── 01-sniff-menu.js            抓全量菜单树
+    ├── 02-build-feature-map.js     归类 + 生成可检索地图（HTML/MD）
+    ├── 03-export-goods.js          商品全量备份
+    ├── 04-delete-goods.js          分批删商品（--yes 才执行）
+    ├── 05-collect-page-urls.js     采集装修页面引用的图片
+    ├── 06-export-material.js       素材备份 + 判定未使用
+    └── 07-delete-unused-material.js 删未使用素材（--yes 才执行）
+```
+
+### 跑法
+
+```bash
+npm install                    # 或复用全局 playwright-core
+cp config.example.js config.local.js && vim config.local.js
+node scripts/lib/common.js login       # 登录一次，存登录态
+node scripts/01-sniff-menu.js          # 抓菜单
+node scripts/02-build-feature-map.js   # 出功能地图
+node scripts/03-export-goods.js        # 备份商品
+node scripts/05-collect-page-urls.js   # 算素材引用
+node scripts/06-export-material.js     # 备份素材 + 出可删清单
+node scripts/04-delete-goods.js --yes  # 删商品（危险）
+node scripts/07-delete-unused-material.js --yes   # 删素材（危险）
+```
+
+---
+
+生成时间：2026-10-26
+接口实测：2026-10-25 ~ 2026-10-26（微盟 SaaS 商户后台）

@@ -1,0 +1,17 @@
+# 凭证
+config.local.js
+*.local.js
+.env
+
+# 登录态 / 浏览器缓存
+.profile/
+.playwright-cli/
+
+# 运行产物
+out/
+backup/
+shots/
+.scan/
+
+# 依赖
+node_modules/
