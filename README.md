@@ -52,6 +52,7 @@
 | [**06 · 库存 inventory**](docs/06-库存-inventory.md) | 库存查询、库存调整、**异步任务陷阱** |
 | [**07 · 其他模块与页面路径**](docs/07-其他模块与页面路径.md) | 财务/运费模板/开屏推广/客服/数据 等模块的入口 |
 | [**10 · 商品分组 classify**](docs/10-商品分组-classify.md) | 分组树 CRUD、**删一级级联删二级**、批量建 106 个二级并挂图 |
+| [**11 · 商品批量上架全流程**](docs/11-商品批量上架全流程.md) | 🟢 **端到端**：图片规范化 → 素材按商品分组上传 → 导入 → 图文详情 → 库存；含必填列清单、6 个导入血坑、8 条踩坑清单 |
 
 ### 必读
 
@@ -240,6 +241,7 @@ weimob-auto-tips/
 │   ├── 08-批量清库实战.md          🔴 必读
 │   ├── 09-踩坑与事故复盘.md
 │   ├── 10-商品分组-classify.md
+│   ├── 11-商品批量上架全流程.md     🟢 端到端实战
 │   ├── API_CATALOG.md             接口索引（三通道对比 + 选型）
 │   ├── 官方-01-WOS开放平台.md       🟢 官方
 │   ├── 官方-02-iPaaS私域网关.md     🟢 官方
@@ -253,13 +255,23 @@ weimob-auto-tips/
     ├── 04-delete-goods.js          分批删商品（--yes 才执行）
     ├── 05-collect-page-urls.js     采集装修页面引用的图片
     ├── 06-export-material.js       素材备份 + 判定未使用
-    └── 07-delete-unused-material.js 删未使用素材（--yes 才执行）
+    ├── 07-delete-unused-material.js 删未使用素材（--yes 才执行）
+    │
+    │   # 以下 08~15 是「批量搬家」流水线（见 docs/11）
+    ├── 08-process-images.js        图片规范化：750×750 白底自适应 + 长详情图切段
+    ├── 09-create-goods-groups.js   按商品建素材二级分组（短名_srcId）
+    ├── 10-upload-processed.js      批量上传（--noinsert 跳过入库只取 URL）
+    ├── 11-gen-import-final.js      生成导入 Excel（--from/--to 分批）
+    ├── 12-import-batch.js          一次登录、多文件流水线导入
+    ├── 13-set-desc.js              批量写图文详情 + 校正商品图片
+    ├── 14-gen-fix-from-fail.js     读失败明细 → 只补录失败的那几个商品
+    └── 15-verify-final.js          终验：总数 + 抽样核对图/详情/类目/SKU
 ```
 
 ### 跑法
 
 ```bash
-npm install                    # 或复用全局 playwright-core
+npm install                    # playwright-core / sharp / cos-nodejs-sdk-v5 / xlsx
 cp config.example.js config.local.js && vim config.local.js
 node scripts/lib/common.js login       # 登录一次，存登录态
 node scripts/00-sniff-api.js --auto    # 采集接口台账（人工点更深，--auto 走一遍模块）
@@ -270,9 +282,24 @@ node scripts/05-collect-page-urls.js   # 算素材引用
 node scripts/06-export-material.js     # 备份素材 + 出可删清单
 node scripts/04-delete-goods.js --yes  # 删商品（危险）
 node scripts/07-delete-unused-material.js --yes   # 删素材（危险）
+
+# 批量搬家流水线（顺序不能乱）
+node scripts/08-process-images.js --all              # 1. 处理图片，出清单 + 断点续跑
+node scripts/09-create-goods-groups.js               # 2. 建 249 个素材分组
+node scripts/10-upload-processed.js --all --noinsert # 3. 上传取 URL（入库可能撞配额）
+node scripts/11-gen-import-final.js --from=0 --to=83 --tag=p1   # 4. 分批生成 Excel
+node scripts/12-import-batch.js 最终导入_p1.xlsx …    # 5. 导入（自动取失败明细）
+node scripts/14-gen-fix-from-fail.js 失败明细_xxx.xlsx fixp1    # 6. 补录（只补失败的）
+node scripts/13-set-desc.js --all                    # 7. 写图文详情
+node scripts/15-verify-final.js 6                    # 8. 终验
 ```
+
+> 08~15 依赖脚本同级的 `profile/`（登录态）和 `backup/`（数据目录：
+> `products.json`、`图片处理清单.json`、`素材URL映射.json`、`商品ID映射.json`、商品导入模板.xlsx）。
+> 脚本里 `executablePath` 写的是本机 chromium 路径，换机器要改。
 
 ---
 
-生成时间：2026-10-26
-接口实测：2026-10-25 ~ 2026-10-26（微盟 SaaS 商户后台）
+生成时间：2026-10-27
+接口实测：2026-10-25 ~ 2026-10-27（微盟 SaaS 商户后台）
+批量上架实战：2026-10-27 完成 249 个商品 / 448 行 / 3,844 张图端到端跑通
