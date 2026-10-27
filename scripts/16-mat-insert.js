@@ -33,12 +33,25 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   page.on('request', r => { if (r.url().includes(MEP)) { H = r.headers(); mBody = r.postData(); } });
   await page.goto(MAT, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(13000);
-  const hdr = {}; ['authorization', 'apiclient', 'weimob-bosid', 'content-type', 'referer'].forEach(k => { if (H[k]) hdr[k] = H[k]; });
-  hdr['content-type'] = 'application/json';
+  const hdr = {}; ['authorization', 'apiclient', 'weimob-bosid', 'content-type', 'referer', 'accept'].forEach(k => { if (H[k]) hdr[k] = H[k]; });
+  hdr['content-type'] = 'application/json; charset=utf-8';
+  // user-agent 必须带：缺了会被风控拦下并返回误导性的「素材容量已超出限额」
+  hdr['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
   const cookies = await ctx.cookies();
   const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
   await ctx.close();
   const baseInfo = JSON.parse(mBody).basicInfo;
+
+  // 用「界面真实成功过」的 insertMaterial 请求体当模板（字段一个不差，避免漏字段被判容量超限）
+  let PROTO = null;
+  const probeFile = path.join(__dirname, 'out', 'mat-ui-probe.json');
+  if (fs.existsSync(probeFile)) {
+    const d = JSON.parse(fs.readFileSync(probeFile, 'utf8'));
+    const r = (d.reqs || []).filter(x => /insertMaterial/.test(x.api)).pop();
+    if (r) { try { PROTO = JSON.parse(r.body); } catch (e) { } }
+  }
+  console.log(PROTO ? '已加载真实请求体模板（proto）' : '⚠ 无模板，用手写 body（可能失败）');
+
   const post = async body => {
     const r = await fetch('https://master.weimob.com/api3/material/center/material/insertMaterial', {
       method: 'POST', headers: { ...hdr, cookie: cookieStr }, body: JSON.stringify(body),
@@ -55,14 +68,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const worker = async () => {
     while (queue.length) {
       const j = queue.shift();
-      const body = {
-        bosId: 4022657115397, productId: 1, vid: 0, vidType: 2, productInstanceId: 24343313397,
-        merchantId: 2000569246397, sourceProductId: 1, sourceProductInstanceId: 24343313397,
+      const body = PROTO ? JSON.parse(JSON.stringify(PROTO)) : {
+        bosId: 4022657115397, productId: 1, vid: 0, vidType: 2, productInstanceId: 24343333397,
+        merchantId: 2000569246397, sourceProductId: 1, sourceProductInstanceId: 24343333397,
         sourceProductVersionId: '110499', tcode: 'weimob', url: j.url, groupId: j.gid, size: j.size,
         title: j.title, materialType: 1, materialFileType: 4, channels: [], createUid: 12103830397,
-        orderInfo: { order: 0, stage: 'stage_' + Date.now() + Math.floor(Math.random() * 1000), total: 1 },
-        materialDetailExts: [], basicInfo: baseInfo, i18n: { language: 'zh-CN', timezone: 8 },
+        orderInfo: { order: 0, stage: 'stage_' + Date.now(), total: 1 },
+        materialDetailExts: [{ key: 'width', value: j.w || 750 }, { key: 'height', value: j.h || 750 }],
+        basicInfo: baseInfo, i18n: { language: 'zh-CN', timezone: 8 },
+        extendInfo: { refer: '/bos/products/mpmaterial/{bosId}/{key}/store/material', source: 80 },
       };
+      // 只替换与本张图相关的字段，其余完全沿用模板
+      body.url = j.url; body.size = j.size; body.title = j.title; body.groupId = j.gid;
+      body.orderInfo = { order: 0, stage: 'stage_' + Date.now(), total: 1 };
+      body.materialDetailExts = [{ key: 'width', value: j.w || 750 }, { key: 'height', value: j.h || 750 }];
+      if (!body.basicInfo) body.basicInfo = baseInfo;
       const r = await post(body);
       if (String(r.errcode) === '0') {
         ok++; done.push(j);

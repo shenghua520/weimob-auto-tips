@@ -266,8 +266,13 @@ weimob-auto-tips/
     ├── 13-set-desc.js              批量写图文详情 + 校正商品图片
     ├── 14-gen-fix-from-fail.js     读失败明细 → 只补录失败的那几个商品
     ├── 15-verify-final.js          终验：总数 + 抽样核对图/详情/类目/SKU
-    ├── 16-mat-insert.js            配额扩容后，把未入库的图按原分组补登进素材库
-    └── 17-del-goods.js             按 ID 删商品（先快照，--yes 才执行）
+    ├── 16-mat-insert.js            素材补登（只调 insertMaterial，不重传）
+    ├── 17-del-goods.js             按 ID 删商品（先快照，--yes 才执行）
+    ├── 18-video-upload.js          视频：建 9 个大类组 + 上传 + 产出 URL 映射
+    ├── 19-sync-goods.js            视频挂商品 + 副标题补全 + 详情图样式加固
+    ├── 20-set-stock-all.js         批量录库存（覆盖式，默认 100）
+    ├── 21-review-mobile.js         手机端批量体检：逐张比对显示比例 vs 原图比例
+    └── 22-mobile-shot.js           手机端单商品截图 + 图片尺寸明细
 ```
 
 ### 跑法
@@ -294,7 +299,11 @@ node scripts/12-import-batch.js 最终导入_p1.xlsx …    # 5. 导入（自动
 node scripts/14-gen-fix-from-fail.js 失败明细_xxx.xlsx fixp1    # 6. 补录（只补失败的）
 node scripts/13-set-desc.js --all                    # 7. 写图文详情
 node scripts/15-verify-final.js 6                    # 8. 终验
-node scripts/16-mat-insert.js                        # 9. 配额扩容后再补登素材库
+node scripts/16-mat-insert.js                        # 9. 素材补登进素材库
+node scripts/18-video-upload.js                      # 10. 视频建组 + 上传
+node scripts/19-sync-goods.js --all                  # 11. 挂视频 + 副标题 + 详情样式
+node scripts/20-set-stock-all.js --num=100           # 12. 录库存
+node scripts/21-review-mobile.js 12                  # 13. 手机端体检（比例/裁切）
 ```
 
 > 08~15 依赖脚本同级的 `profile/`（登录态）和 `backup/`（数据目录：
