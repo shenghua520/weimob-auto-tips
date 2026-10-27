@@ -265,7 +265,9 @@ weimob-auto-tips/
     ├── 12-import-batch.js          一次登录、多文件流水线导入
     ├── 13-set-desc.js              批量写图文详情 + 校正商品图片
     ├── 14-gen-fix-from-fail.js     读失败明细 → 只补录失败的那几个商品
-    └── 15-verify-final.js          终验：总数 + 抽样核对图/详情/类目/SKU
+    ├── 15-verify-final.js          终验：总数 + 抽样核对图/详情/类目/SKU
+    ├── 16-mat-insert.js            配额扩容后，把未入库的图按原分组补登进素材库
+    └── 17-del-goods.js             按 ID 删商品（先快照，--yes 才执行）
 ```
 
 ### 跑法
@@ -292,6 +294,7 @@ node scripts/12-import-batch.js 最终导入_p1.xlsx …    # 5. 导入（自动
 node scripts/14-gen-fix-from-fail.js 失败明细_xxx.xlsx fixp1    # 6. 补录（只补失败的）
 node scripts/13-set-desc.js --all                    # 7. 写图文详情
 node scripts/15-verify-final.js 6                    # 8. 终验
+node scripts/16-mat-insert.js                        # 9. 配额扩容后再补登素材库
 ```
 
 > 08~15 依赖脚本同级的 `profile/`（登录态）和 `backup/`（数据目录：
