@@ -272,7 +272,15 @@ weimob-auto-tips/
     ├── 19-sync-goods.js            视频挂商品 + 副标题补全 + 详情图样式加固
     ├── 20-set-stock-all.js         批量录库存（覆盖式，默认 100）
     ├── 21-review-mobile.js         手机端批量体检：逐张比对显示比例 vs 原图比例
-    └── 22-mobile-shot.js           手机端单商品截图 + 图片尺寸明细
+    ├── 22-mobile-shot.js           手机端单商品截图 + 图片尺寸明细
+    ├── 23-check-stock.js           库存核验（读 storeWarehouse.totalStockNum）
+    ├── 24-stock-delta.js           库存按差额调整
+    ├── 25-gen-entry.js             生成入库单 Excel（规格条码精确定位 SKU）
+    ├── 26-entry-probe.js           抓入库单真实 API
+    ├── 27-process-images-v2.js     主图 750×1000 + 中心 750×750 安全区（抗容器裁切）
+    ├── 28-upload-v2.js             上传新主图
+    ├── 29-update-images.js         把新主图写回商品
+    └── 30-list-img-probe.js        量容器比例 / object-fit（定安全区用）
 ```
 
 ### 跑法
