@@ -94,7 +94,93 @@ body: { assignType: 2, stockNum: -103, storeIdList: [], itemSkuId: ..., ... }
 > 页面能改的是"活商品"的库存；商品删了以后，这行数据只能由微盟后台清档处理（找客服）。
 > 好在这类行不影响经营：关联商品 0，不会上架、不会发货、不会进任何交易链路，只是显示脏数据。
 
-## 4. 正确的库存清理顺序
+## 4. 新导入商品录库存：走「商品入库」，库存调整调不动它
+
+> 实测 2026-11-11：19 个新导入商品 / 39 个 SKU 要各录 999 库存，用 `createAsyncStockTask`（库存调整）**三轮全部空转**，最后靠「商品入库」一次落账 39/39。
+
+### 现象：接口说成功，库存永远是 0
+
+```text
+POST /api3/mall/mgr/stock/createAsyncStockTask
+→ { errcode: 0, data: { result: true, taskId: 3374611297 } }
+```
+
+回读 `queryStoreStockListWithPage`：`totalStockNum` 依然是 0。
+等 33 分钟再看，还是 0。任务日志里 `storeNum: -1` —— **任务跑了，但没落到任何仓库**。
+
+### 根因：新 SKU 还没绑定仓库
+
+库存行里新导入的 SKU 是：
+
+```jsonc
+"storeWarehouse": { "warehouseId": null, "totalStockNum": 0, ... }
+```
+
+库存调整任务需要一个**落点仓库**。`warehouseId` 为 `null` 时任务找不到落点，于是返回成功但内部空转（`storeNum:-1`）。这不是"异步慢"，是**任务根本没有目标**——再等也不会变。
+
+> 判断方法：`result:true` + `taskId` 只代表**受理**。要么回读数值，要么看任务日志里有没有 `storeNum`。别用"再等等"来解释纹丝不动。
+
+### 正解：商品入库单 `createInventoryOrder`
+
+```
+POST /api3/mall/mgr/inventory/createInventoryOrder
+```
+
+```jsonc
+{
+  "basicInfo": { "...": "从库存管理页面自己的 XHR 抄" },
+  "solutionType": 2,
+  "operateType": 1,           // 1 = 入库 / 2 = 出库
+  "bizType": "1105",          // 1105 其他入库 / 1206 报废（出库）
+  "receiptItemList": [
+    {
+      "itemId": 1617xxxxxxxxx,   // ⚠️ 不是 goodsId！从库存行 pageList[].itemId 取
+      "itemSkuId": 3298xxxxxxxxx,
+      "quantity": 999,           // 实物入库数
+      "defectiveQty": 0          // 残次品数，正常填 0
+    }
+  ]
+}
+```
+
+- **`itemId` ≠ `goodsId`**：这是最容易错的一处。`itemId` 只出现在库存行（`queryStoreStockListWithPage` 的 `pageList[].itemId`）里，商品接口拿不到。用 `goodsId` 顶替会报"商品不存在"或静默失败。
+- **一次可以带多个 SKU**（本次 37 个 SKU 一单提交成功）；但按 [13 章](13-批量操作铁律.md) 的分批原则，建议 20~30 行一单。
+- 入库单落在「商城 > 库存管理 > 商品入库」，单据可查、可退，**比库存调整更符合业务语义**，也更安全（有单据就有据可查）。
+
+### 事故：`defectiveQty` 填错，一路错到实物少 1 个
+
+真实发生过的一串连锁反应，值得记下来：
+
+| 步骤 | 动作 | 结果 |
+|---|---|---|
+| 1 | 入库时把 `defectiveQty` 也填了 `999`（本意只是"填个值"） | 实物 999 / **残次 999** |
+| 2 | 发现不对，用 `bizType:"1206"` 报废冲减残次 | 报废单 `quantity` 被前端组件自动抬成 **1**，只冲掉 1 个 |
+| 3 | 实物库存变成 **998** | 差 1 个 |
+| 4 | 再补一张入库单 `quantity:1` | 实物 999 ✅ 残次 0 ✅ |
+
+**教训**：`defectiveQty` 是**残次品数量**，正常入库一律 `0`；纠错动作本身也要按流程走小样 + 回读，否则"修 bug"会造新账。
+
+### 回读验收（库存字段在哪）
+
+```jsonc
+// queryStoreStockListWithPage → pageList[]
+{
+  "itemId": ..., "itemSkuId": ...,
+  "storeWarehouse": {
+    "warehouseId": 306854216,     // 入库后不再是 null
+    "totalStockNum": 999,         // 实物库存
+    "usableStockNum": 999,        // 可用库存
+    "defectiveStockNum": 0        // 残次
+  }
+}
+```
+
+三个数都要对：`totalStockNum = 999`、`usableStockNum = 999`、`defectiveStockNum = 0`。
+分页 `pageSize` 用 20（与商品列表同样的静默降级风险，见 `09-#3`），按 `itemSkuId` 精确匹配到行。
+
+---
+
+## 5. 正确的库存清理顺序
 
 ```text
 1. 库存清零（库存调整 → 增量减少到 0）      ← 必须在删商品之前做
@@ -105,7 +191,7 @@ body: { assignType: 2, stockNum: -103, storeIdList: [], itemSkuId: ..., ... }
 
 本次是倒着做的（先删商品再想清库存），所以踩到了坑。
 
-## 5. 相关页面路径
+## 6. 相关页面路径
 
 | 功能 | 路径 |
 |---|---|
