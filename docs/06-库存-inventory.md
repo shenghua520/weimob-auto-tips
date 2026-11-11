@@ -167,7 +167,7 @@ POST /api3/mall/mgr/inventory/createInventoryOrder
 {
   "itemId": ..., "itemSkuId": ...,
   "storeWarehouse": {
-    "warehouseId": 306854216,     // 入库后不再是 null
+    "warehouseId": <WAREHOUSE_ID>,  // 入库后不再是 null
     "totalStockNum": 999,         // 实物库存
     "usableStockNum": 999,        // 可用库存
     "defectiveStockNum": 0        // 残次
