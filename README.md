@@ -64,13 +64,14 @@
 | [**15 · 批量改价与积分商城价格实战复盘**](docs/15-批量改价与积分商城价格实战复盘.md) | 🔴 **写操作必读**：商品改价 / 积分兑换价 / 可兑换数量三类写操作实战；`updatePointGoods` 写字段口径（`editChangeNum` 读写不一致）、`skuList` 整体覆盖语义、复合写入连带重置；成功做法 10 类 + 失败踩坑 16 条 |
 | [**16 · 积分商城全链路**](docs/16-积分商城全链路.md) | 🔴 **加品必读**：普通商品 → 积分商城（`addPointGoods`）→ 兑换价 / 可兑数量 / 限兑 → **分组归位**（`moveGoodsToClassify`）；入口是新标签不是弹窗、JS chunk 扫接口名、表单顺序不可逆、受控组件填值、10 条踩坑速查 |
 | [**17 · 商品分组整树复制实战**](docs/17-商品分组整树复制实战.md) | 🔴 **建组/复制分组必读**：`addGoodsClassify` 真实入参（**一级不传 parentId**，传 0 报空值）、UI 拦截取证法、整树复制源清单纪律、验证式删除、4 条新踩坑 |
+| [**18 · 商品复制改组与积分替换实战**](docs/18-商品复制改组与积分替换实战.md) | 🔴 **复制商品/换积分品必读**：复制是前端跳转+`copyGoods`（只改写 2 个分组字段）；积分替换「加→验→删」（classifyId **直传归位**）；`editQuantity`≠可兑数量（读 `availableChangeNum`/写 `editChangeNum`）；聚合=剩余量口径；2 次事故复盘 |
 
 ### 必读
 
 | 文档 | 内容 |
 |---|---|
 | [**08 · 批量清库实战**](docs/08-批量清库实战.md) | 🔴 **血的教训**：180 商品 + 5501 素材的完整清库流程与顺序 |
-| [**09 · 踩坑与事故复盘**](docs/09-踩坑与事故复盘.md) | **33 个**真实踩坑：pageSize 静默降级、SPA 漏项、异步任务假成功、"不填"传成 0、快照污染、只验自己改过的、遮罩吞点击、新标签页入口、受控组件、加入≠归位、一级传 parentId=0 报空值、复制源清单没冻结、守卫子串误伤… |
+| [**09 · 踩坑与事故复盘**](docs/09-踩坑与事故复盘.md) | **38 个**真实踩坑：pageSize 静默降级、SPA 漏项、异步任务假成功、"不填"传成 0、快照污染、只验自己改过的、遮罩吞点击、新标签页入口、受控组件、加入≠归位、一级传 parentId=0 报空值、复制源清单没冻结、守卫子串误伤、request.abort() 不存在、editQuantity≠可兑数量、聚合=剩余量… |
 | [**13 · 批量操作铁律**](docs/13-批量操作铁律.md) | 🔴 **开工前必读**：5 个固定动作、改字段 3 条铁律、匹配优先级、4 项验收、排查顺序 |
 
 ---
@@ -244,6 +245,15 @@ Content-Type: application/json
 - 节点 >200 后分组页换发 `queryClassifyListWithPageForManagement`，模板捕获放宽到 `classify/query*` + 重载重试（`09#33`）。
 - 详见 [17 章](docs/17-商品分组整树复制实战.md)。
 
+### 15. 复制商品/换积分品：改写 payload 两字段，读写字段名三个样
+
+- **商品「复制」是前端跳转**（`goods/editNoMenu?id=X&type=sale&isCopy=true` 预填表单），保存走 `copyGoods`。批量=拦截保存 payload、**只改 `goodsClassifyList`/`goodsClassifyIdList` 两个字段**后放行，其余原样透传。
+- **积分替换 = 加→验→删**：`addPointGoods` 的 `classifyId` **直传目标积分分组即归位**（不必 `moveGoodsToClassify`）；删除按钮文案是「移除」，body 是 `goodsIdList[]`。
+- **可兑数量三字段**：读 `availableChangeNum` / 写 `editChangeNum` / `editQuantity` 是物理库存回显——建计划表取错字段导致 345 条配额写错（`09#35`）。口径：每 SKU 配额 = `(goodsAvailableNum + goodsAlreadySoldNum) / n`（列表聚合是**剩余量**，`09#36`）。
+- **拦截 abort 用 `page.route()` 层**：request 对象没有 `abort()`（puppeteer 的 API），调了直接 TypeError 且请求穿透（`09#34`）。
+- 对照组全错时先怀疑校验口径/查询条件（filterOption 自造简写键 → 空壳数据假 FAIL，`09#38`）。
+- 详见 [18 章](docs/18-商品复制改组与积分替换实战.md)。
+
 ---
 
 ## 🔐 安全说明
@@ -285,6 +295,7 @@ weimob-auto-tips/
 │   ├── 15-批量改价与积分商城价格实战复盘.md  🔴 写操作必读（改价/兑换价/可兑数量）
 │   ├── 16-积分商城全链路.md         🔴 加品必读（addPointGoods / 归组 / 验收）
 │   ├── 17-商品分组整树复制实战.md   🔴 建组/复制分组必读（真实入参 / 源清单纪律 / 验证式删除）
+│   ├── 18-商品复制改组与积分替换实战.md 🔴 复制商品/换积分品必读（copyGoods 改写 / 加验删 / 三字段口径）
 │   ├── API_CATALOG.md             接口索引（三通道对比 + 选型）
 │   ├── 官方-01-WOS开放平台.md       🟢 官方
 │   ├── 官方-02-iPaaS私域网关.md     🟢 官方
@@ -343,7 +354,11 @@ weimob-auto-tips/
     ├── 43-export-all-readonly.js            三块数据全量只读采集（分组/积分/商品+详情）
     ├── 44-capture-ui-payload.js             UI 拦截取证真实入参（零写入）
     ├── 45-copy-classify-tree.js             整树复制 X→X+后缀（源清单冻结+幂等+三查）
-    └── 46-delete-classify-verified.js       验证式删除单个分组（空组双确认+全量比对）
+    ├── 46-delete-classify-verified.js       验证式删除单个分组（空组双确认+全量比对）
+    ├── 47-copy-goods-reclassify.js          复制商品+改写孪生分组（copyGoods payload 两字段改写）
+    ├── 48-replace-points-goods.js           积分替换：add(直传归位)→验→del（台账断点）
+    ├── 49-fix-points-quotas.js              可兑数量修复（updatePointGoods 整单覆盖，(agg+sold)/n 口径）
+    └── 50-verify-points-replace.js          积分替换全量复核（只读，逐条+分组守恒）
 ```
 
 ### 跑法
@@ -390,3 +405,4 @@ node scripts/21-review-mobile.js 12                  # 13. 手机端体检（比
 2026-11-09：商品分组只读导出（116 节点）· 积分商城排序导出（393 条）· 按二级分组重排（391 条写入 + 独立复核全绿）→ 见 14 章
 2026-11-11：批量改价 + 积分兑换价 383 SKU（成功做法 10 类 / 踩坑 16 条）→ 见 15 章；**积分商城加品 19 商品 / 39 SKU + 库存入库 39 SKU + 分组归位 19/19 → 见 16 章与 06 章；首次整理出作业流程总纲 → 见 [SOP](docs/SOP-作业流程.md)**
 2026-11-16：三块数据只读备份（商品 512 / 积分 400 / 分组 122 节点）→ `43`；分组整树复制 118 节点 X（兑换）全部隐藏 + 验证式纠错删除 → 见 17 章与 09 章 #30~33
+2026-11-16（下午）：512 商品全量复制改（兑换）组（多分组按 classifyId 映射）→ `47`；积分商城 400 条整体换成（兑换）复制体（加→验→删、原条目清空、分组零差错）→ `48`~`50` 与 18 章、09 章 #34~38
