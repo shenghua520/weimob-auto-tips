@@ -12,6 +12,7 @@ out/
 backup/
 shots/
 .scan/
+work/
 
 # 依赖
 node_modules/

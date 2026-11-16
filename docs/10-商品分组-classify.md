@@ -98,14 +98,15 @@ POST /api3/mall/goods/classify/addGoodsClassify
 实测：请求体只有 `{name: "铅笔"}` 时，**创建成功**，但 `parentId` 默认 0 —— 它成了一级分组，
 而不是你以为的"随便建一个"。我第一次就因为这个，把「铅笔」建到了顶层，得手动删掉。
 
-### 正确 body
+### 正确 body（2026-11-16 实测修正）
 
 ```jsonc
+// 二级分组
 {
   "basicInfo": { ... },
   "solutionType": 2,
   "name": "铅笔",                    // 必填
-  "parentId": 16481650100397,       // 父分组 ID，一级填 0
+  "parentId": 16481650100397,       // 父分组 ID，必传
   "classifyLevel": 2,               // 1=一级，2=二级
   "imageUrl": "https://image-c.weimobwmc.com/.../xxx.png",   // 分组图片（可选）
   "isShow": true,                   // 在店铺展示
@@ -114,6 +115,12 @@ POST /api3/mall/goods/classify/addGoodsClassify
   "i18n": { ... }, "extendInfo": { ... }
 }
 ```
+
+**一级分组的 body 不一样**：`parentId` 整个字段**不出现**，传 `0` 会报
+`{"errcode":"001450020000001","errmsg":"入参存在空值"}`——「空值」指你多传的字段，不是缺字段。
+UI 真实 payload（拦截取证，见 [17 章](17-商品分组整树复制实战.md)）只有 7 个字段：
+`basicInfo / solutionType / classifyLevel:1 / name / isShow / i18n / extendInfo`。
+`sort` / `imageUrl` / `isHot` 可选，多余字段一律别带。
 
 返回：
 
